@@ -21,7 +21,7 @@ app.get('/images/:imageName', (req, res) => {
 });
 
 // ComfyUI WebSocket setup
-const ws = new WebSocket('ws://localhost:8188/ws');
+const ws = new WebSocket('ws://38.147.83.29:27194/ws');
 
 ws.on('open', function open() {
     console.log('Connected to ComfyUI WebSocket');
@@ -50,7 +50,7 @@ async function uploadImageToComfyUI(imagePath, maxRetries = 3, delay = 2000) {
             });
 
             console.log(`[${attempt}] Sending POST request to ComfyUI upload endpoint`);
-            const uploadResponse = await fetch('http://localhost:8188/upload/image', {
+            const uploadResponse = await fetch('http://38.147.83.29:27194/upload/image', {
                 method: 'POST',
                 body: form,
                 timeout: 60000 // 60 seconds timeout
@@ -116,7 +116,7 @@ async function processWithComfyUI(imagePath, fullName, gender, position, setPang
         };
 
         console.log(`[6] Sending workflow to ComfyUI`);
-        const response = await fetch('http://localhost:8188/prompt', {
+        const response = await fetch('http://38.147.83.29:27194/prompt', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody)
@@ -149,12 +149,12 @@ async function waitForImageGeneration(promptId) {
     return new Promise((resolve, reject) => {
         const checkStatus = async () => {
             try {
-                const historyResponse = await fetch(`http://localhost:8188/history/${promptId}`);
+                const historyResponse = await fetch(`http://38.147.83.29:27194/history/${promptId}`);
                 const historyData = await historyResponse.json();
 
                 if (historyData[promptId] && historyData[promptId].outputs && historyData[promptId].outputs["20"]) {
                     const outputImage = historyData[promptId].outputs["20"].images[0];
-                    resolve(`http://localhost:8188/view?filename=${outputImage.filename}&subfolder=${outputImage.subfolder}&type=${outputImage.type}`);
+                    resolve(`http://38.147.83.29:27194/view?filename=${outputImage.filename}&subfolder=${outputImage.subfolder}&type=${outputImage.type}`);
                 } else {
                     setTimeout(checkStatus, 1000); // Check again after 1 second
                 }

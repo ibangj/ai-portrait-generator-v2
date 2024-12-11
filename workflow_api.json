@@ -31,7 +31,7 @@
   },
   "4": {
     "inputs": {
-      "ckpt_name": "dreamshaperXL_turboDpmppSDE.safetensors"
+      "ckpt_name": "dreamshaperXL_v21TurboDPMSDE.safetensors"
     },
     "class_type": "CheckpointLoaderSimple",
     "_meta": {
