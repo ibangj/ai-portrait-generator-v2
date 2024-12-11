@@ -102,25 +102,46 @@ document.addEventListener('DOMContentLoaded', () => {
     function openCamera() {
         cameraPrompt.classList.add('hidden');
         cameraInterface.classList.remove('hidden');
-        startCamera();
+        // Make sure any existing stream is stopped
+        stopCamera();
+        // Clear any existing video source
+        if (video.srcObject) {
+            video.srcObject = null;
+        }
+        // Start camera with a slight delay to ensure proper initialization
+        setTimeout(() => {
+            startCamera();
+        }, 100);
     }
 
     function startCamera() {
-        navigator.mediaDevices.getUserMedia({ video: true })
-            .then(stream => {
-                video.srcObject = stream;
-            })
-            .catch(err => {
-                console.error('Error accessing camera:', err);
-                alert('Unable to access camera. Please make sure you have granted camera permissions.');
-            });
+        navigator.mediaDevices.getUserMedia({ 
+            video: { 
+                width: { ideal: 1152 },
+                height: { ideal: 768 }
+            } 
+        })
+        .then(stream => {
+            video.srcObject = stream;
+            // Ensure video plays when ready
+            video.onloadedmetadata = () => {
+                video.play().catch(err => {
+                    console.error('Error playing video:', err);
+                });
+            };
+        })
+        .catch(err => {
+            console.error('Error accessing camera:', err);
+            alert('Unable to access camera. Please make sure you have granted camera permissions.');
+        });
     }
 
     function stopCamera() {
-        const stream = video.srcObject;
-        if (stream) {
+        if (video.srcObject) {
+            const stream = video.srcObject;
             const tracks = stream.getTracks();
             tracks.forEach(track => track.stop());
+            video.srcObject = null;
         }
     }
 
@@ -335,20 +356,35 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedVenue = '';
         selectedExpression = '';
         selectedFrame = '';
+        
+        // Stop camera if it's running
         stopCamera();
-        // Reset loading/result containers
+        
+        // Reset UI elements
         document.querySelector('.loading-animation').style.display = 'block';
         resultContainer.classList.add('hidden');
-        // Clear the generated image
         generatedImage.src = '';
         document.getElementById('resultMessage').textContent = '';
-        showStep(1);
-        clearInterval(progressInterval);
-        progressBar.style.width = '0%';
-        progressText.textContent = 'Starting generation...';
         if (qrCodeElement) {
             qrCodeElement.innerHTML = '';
         }
+        
+        // Reset camera interface
+        cameraInterface.classList.add('hidden');
+        cameraPrompt.classList.remove('hidden');
+        
+        // Clear progress
+        clearInterval(progressInterval);
+        progressBar.style.width = '0%';
+        progressText.textContent = 'Starting generation...';
+        
+        // Reset all selection buttons
+        document.querySelectorAll('.outline-button').forEach(btn => {
+            btn.classList.remove('selected');
+        });
+        
+        // Show first step
+        showStep(1);
     }
 
     // Expose functions to window for onclick handlers
