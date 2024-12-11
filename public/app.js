@@ -96,7 +96,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function selectFrame(frame) {
         selectedFrame = frame;
+        
+        // Clear any existing frame data from formData
+        if (formData.has('selectedFrame')) {
+            formData.delete('selectedFrame');
+        }
+        
+        // Add new frame selection
         formData.append('selectedFrame', frame);
+        
+        // Update radio button state
+        document.querySelectorAll('input[name="frame"]').forEach(radio => {
+            if (radio.value === frame) {
+                radio.checked = true;
+            } else {
+                radio.checked = false;
+            }
+        });
     }
 
     function openCamera() {
@@ -225,10 +241,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function generateQRCode(imageUrl) {
         try {
-            // Generate a unique ID for this image
-            const imageId = Date.now().toString(36) + Math.random().toString(36).substr(2);
+            // Extract image ID from URL if possible
+            const urlParams = new URLSearchParams(new URL(imageUrl).search);
+            const filename = urlParams.get('filename');
+            const imageId = filename ? filename.split('.')[0] : Date.now().toString(36);
             
-            // Store the image first
+            // Store the image
             fetch('/store-image', {
                 method: 'POST',
                 headers: {
@@ -242,13 +260,11 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    // Create the public URL for sharing
+                    // Create share URL
                     const shareUrl = `${window.location.origin}/share/${imageId}`;
                     
-                    // Clear previous QR code if any
+                    // Clear and generate new QR code
                     qrCodeElement.innerHTML = '';
-                    
-                    // Generate QR code with the share URL
                     new QRCode(qrCodeElement, {
                         text: shareUrl,
                         width: 128,
@@ -258,8 +274,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         correctLevel: QRCode.CorrectLevel.H
                     });
 
-                    // Update the image source to use the local URL
-                    generatedImage.src = data.localUrl;
+                    // Update image source only if not reused
+                    if (!data.reused) {
+                        generatedImage.src = data.localUrl;
+                    }
                 } else {
                     throw new Error('Failed to store image');
                 }
@@ -313,7 +331,12 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    generatedImage.src = data.imageUrl;
+                    // Handle potential proxied URL
+                    const imageUrl = data.imageUrl.startsWith('http') ? 
+                        `/proxy-image?url=${encodeURIComponent(data.imageUrl)}` : 
+                        data.imageUrl;
+                    
+                    generatedImage.src = imageUrl;
                     document.getElementById('resultMessage').textContent = data.message;
                     
                     // Wait for image to load before showing
@@ -326,13 +349,20 @@ document.addEventListener('DOMContentLoaded', () => {
                             
                             // Generate QR code after showing the result
                             try {
-                                generateQRCode(data.imageUrl);
+                                generateQRCode(imageUrl);
                             } catch (error) {
                                 console.error('Error in QR code generation:', error);
-                                // Hide QR container if generation fails
                                 document.getElementById('qrContainer').style.display = 'none';
                             }
                         }, 500);
+                    };
+
+                    // Handle image load error
+                    generatedImage.onerror = () => {
+                        console.error('Error loading generated image');
+                        stopProgressBar(false);
+                        alert('Error loading the generated image. Please try again.');
+                        startOver();
                     };
                 } else {
                     stopProgressBar(false);
@@ -381,6 +411,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // Reset all selection buttons
         document.querySelectorAll('.outline-button').forEach(btn => {
             btn.classList.remove('selected');
+        });
+
+        // Reset frame selection radio buttons
+        document.querySelectorAll('input[name="frame"]').forEach(radio => {
+            radio.checked = false;
         });
         
         // Show first step

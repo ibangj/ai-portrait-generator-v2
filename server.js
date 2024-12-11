@@ -7,6 +7,8 @@ const fs = require('fs');
 const path = require('path');
 const fetch = require('node-fetch').default;
 const FormData = require('form-data');
+const StorageCleanup = require('./utils/cleanup');
+const http = require('http');
 
 const app = express();
 
@@ -55,6 +57,16 @@ app.post('/store-image', express.json(), async (req, res) => {
             return res.status(400).json({ success: false, message: 'Missing required fields' });
         }
 
+        // Check if image already exists in store
+        const existingUrl = imageStore.get(imageId);
+        if (existingUrl) {
+            console.log(`Image already exists: ${imageId} -> ${existingUrl}`);
+            return res.json({ 
+                success: true,
+                localUrl: existingUrl
+            });
+        }
+
         // Download image from ComfyUI server
         const response = await fetch(imageUrl);
         if (!response.ok) throw new Error('Failed to fetch image');
@@ -63,18 +75,21 @@ app.post('/store-image', express.json(), async (req, res) => {
         const fileName = `${imageId}.png`;
         const filePath = path.join(imagesPath, fileName);
         
-        // Save image to storage
-        fs.writeFileSync(filePath, buffer);
-        
-        // Store mapping with local URL
-        const localUrl = `/storage/images/${fileName}`;
-        imageStore.set(imageId, localUrl);
-        
-        console.log(`Stored image mapping: ${imageId} -> ${localUrl}`);
+        // Check if file already exists on disk
+        if (!fs.existsSync(filePath)) {
+            // Save image to storage only if it doesn't exist
+            fs.writeFileSync(filePath, buffer);
+            
+            // Store mapping with local URL
+            const localUrl = `/storage/images/${fileName}`;
+            imageStore.set(imageId, localUrl);
+            
+            console.log(`Stored new image mapping: ${imageId} -> ${localUrl}`);
+        }
         
         res.json({ 
             success: true,
-            localUrl: localUrl
+            localUrl: `/storage/images/${fileName}`
         });
     } catch (error) {
         console.error('Error storing image:', error);
@@ -221,14 +236,25 @@ async function processWithComfyUI(imagePath, fullName, gender, position, setPang
         if (selectedFrame) {
             const framePath = path.join(__dirname, 'public', 'images', `${selectedFrame}.png`);
             try {
-                uploadedFrame = await uploadImageToComfyUI(framePath);
-                console.log(`[3] Frame uploaded successfully. Uploaded name: ${uploadedFrame}`);
+                if (fs.existsSync(framePath)) {
+                    uploadedFrame = await uploadImageToComfyUI(framePath);
+                    console.log(`[3] Frame uploaded successfully. Uploaded name: ${uploadedFrame}`);
+                } else {
+                    console.warn(`[WARNING] Frame file not found: ${framePath}`);
+                    uploadedFrame = "sample_frame.png"; // Default frame if file not found
+                }
             } catch (frameUploadError) {
                 console.error(`[ERROR] Failed to upload frame. Using default frame.`, frameUploadError);
                 uploadedFrame = "sample_frame.png"; // Default frame if upload fails
             }
         } else {
-            uploadedFrame = "sample_frame.png"; // Default frame if none selected
+            console.log(`[3] No frame selected, using default frame`);
+            const defaultFramePath = path.join(__dirname, 'public', 'images', 'sample_frame.png');
+            if (fs.existsSync(defaultFramePath)) {
+                uploadedFrame = await uploadImageToComfyUI(defaultFramePath);
+            } else {
+                uploadedFrame = "sample_frame.png";
+            }
         }
 
         console.log(`[4] Reading workflow file`);
@@ -287,9 +313,11 @@ async function waitForImageGeneration(promptId) {
 
                 if (historyData[promptId] && historyData[promptId].outputs && historyData[promptId].outputs["20"]) {
                     const outputImage = historyData[promptId].outputs["20"].images[0];
-                    resolve(`http://38.147.83.29:27194/view?filename=${outputImage.filename}&subfolder=${outputImage.subfolder}&type=${outputImage.type}`);
+                    const originalUrl = `http://38.147.83.29:27194/view?filename=${outputImage.filename}&subfolder=${outputImage.subfolder}&type=${outputImage.type}`;
+                    // Return proxied URL instead
+                    resolve(`/proxy-image?url=${encodeURIComponent(originalUrl)}`);
                 } else {
-                    setTimeout(checkStatus, 1000); // Check again after 1 second
+                    setTimeout(checkStatus, 1000);
                 }
             } catch (error) {
                 reject(error);
@@ -339,5 +367,43 @@ app.post('/submit', upload.single('image'), async (req, res) => {
     }
 });
 
+// Initialize cleanup service
+const cleanupService = new StorageCleanup({
+    storageDir: path.join(__dirname, 'storage', 'images'),  // Use absolute path
+    maxAgeInDays: 7,
+    maxSizeInGB: 5
+});
+
+// Start the cleanup job to run every hour
+cleanupService.startCleanupJob(60);
+
+// Handle graceful shutdown
+process.on('SIGTERM', () => {
+    cleanupService.stopCleanupJob();
+    // ... other cleanup code
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+// Add these new endpoints before your existing routes
+app.get('/proxy-image', async (req, res) => {
+    const imageUrl = req.query.url;
+    if (!imageUrl) {
+        return res.status(400).send('No image URL provided');
+    }
+
+    try {
+        const response = await fetch(imageUrl);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        
+        // Forward the content type
+        res.set('Content-Type', response.headers.get('content-type'));
+        
+        // Pipe the image data to response
+        response.body.pipe(res);
+    } catch (error) {
+        console.error('Error proxying image:', error);
+        res.status(500).send('Error fetching image');
+    }
+});
