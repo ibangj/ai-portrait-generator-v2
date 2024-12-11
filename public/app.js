@@ -65,16 +65,39 @@ document.addEventListener('DOMContentLoaded', () => {
         cameraInterface.classList.remove('hidden');
         
         // Get camera permissions and list devices
-        navigator.mediaDevices.getUserMedia({ video: true })
+        navigator.mediaDevices.getUserMedia({ 
+            video: {
+                width: { ideal: 1152 },
+                height: { ideal: 768 },
+                facingMode: 'user'
+            }
+        })
             .then(stream => {
-                // Stop the initial stream - we'll start the selected camera next
+                // Keep this initial stream if no specific camera is selected
+                if (!cameraSelect.value) {
+                    currentStream = stream;
+                    video.srcObject = stream;
+                    return video.play();
+                }
+                // Otherwise stop it and start the selected camera
                 stream.getTracks().forEach(track => track.stop());
                 return getCameraDevices();
             })
-            .then(() => startCamera())
+            .then(() => {
+                if (!cameraSelect.value) return; // Skip if we're using the initial stream
+                return startCamera();
+            })
             .catch(err => {
                 console.error('Error accessing camera:', err);
-                alert('Unable to access camera. Please make sure you have granted camera permissions.');
+                if (err.name === 'NotAllowedError') {
+                    alert('Camera access was denied. Please allow camera access in your browser settings and try again.');
+                } else if (err.name === 'NotFoundError') {
+                    alert('No camera found. Please make sure your camera is properly connected.');
+                } else if (err.name === 'NotReadableError') {
+                    alert('Camera is in use by another application. Please close other apps using the camera and try again.');
+                } else {
+                    alert('Unable to access camera. Please check your camera connection and permissions.');
+                }
             });
     }
 
@@ -88,13 +111,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 video: {
                     deviceId: cameraSelect.value ? { exact: cameraSelect.value } : undefined,
                     width: { ideal: 1152 },
-                    height: { ideal: 768 }
+                    height: { ideal: 768 },
+                    facingMode: 'user'
                 }
             };
 
-            const stream = await navigator.mediaDevices.getUserMedia(constraints);
-            currentStream = stream;
-            video.srcObject = stream;
+            // First try with ideal resolution
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                currentStream = stream;
+                video.srcObject = stream;
+            } catch (err) {
+                // If that fails, try with default resolution
+                console.warn('Failed with ideal resolution, trying default:', err);
+                delete constraints.video.width;
+                delete constraints.video.height;
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                currentStream = stream;
+                video.srcObject = stream;
+            }
             
             // Ensure video plays when ready
             video.onloadedmetadata = () => {
@@ -104,7 +139,15 @@ document.addEventListener('DOMContentLoaded', () => {
             };
         } catch (err) {
             console.error('Error starting camera:', err);
-            alert('Unable to start the selected camera. Please try another camera or check permissions.');
+            if (err.name === 'NotAllowedError') {
+                alert('Camera access was denied. Please allow camera access in your browser settings.');
+            } else if (err.name === 'NotFoundError') {
+                alert('Selected camera not found. Please choose a different camera.');
+            } else if (err.name === 'NotReadableError') {
+                alert('Selected camera is in use by another application. Please close other apps using the camera.');
+            } else {
+                alert('Unable to start the selected camera. Please try another camera or check permissions.');
+            }
         }
     }
 
