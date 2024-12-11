@@ -391,9 +391,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     // Handle image load error
                     generatedImage.onerror = () => {
+                        if (generatedImage.dataset.isStartingOver) return; // Prevent recursive error handling
                         console.error('Error loading generated image');
                         stopProgressBar(false);
                         alert('Error loading the generated image. Please try again.');
+                        generatedImage.dataset.isStartingOver = 'true';
                         startOver();
                     };
                 } else {
@@ -425,7 +427,16 @@ document.addEventListener('DOMContentLoaded', () => {
         // Reset UI elements
         document.querySelector('.loading-animation').style.display = 'block';
         resultContainer.classList.add('hidden');
-        generatedImage.src = '';
+        
+        // Properly cleanup image element
+        const generatedImage = document.getElementById('generatedImage');
+        if (generatedImage) {
+            generatedImage.onload = null;
+            generatedImage.onerror = null;
+            generatedImage.src = '';
+            delete generatedImage.dataset.isStartingOver;
+        }
+        
         document.getElementById('resultMessage').textContent = '';
         if (qrCodeElement) {
             qrCodeElement.innerHTML = '';
