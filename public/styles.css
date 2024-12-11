@@ -124,3 +124,36 @@ button:hover {
 .frame-option input[type="radio"]:checked + img {
     border: 3px solid #3498db;
 }
+
+.timer-settings {
+    margin: 10px 0;
+    text-align: center;
+}
+
+.timer-settings label {
+    margin-right: 10px;
+    font-weight: bold;
+}
+
+.timer-settings select {
+    padding: 5px;
+    border-radius: 4px;
+    font-size: 16px;
+}
+
+.timer-display {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 120px;
+    font-weight: bold;
+    color: white;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+    z-index: 10;
+    display: none;
+}
+
+#cameraContainer {
+    position: relative;
+}

@@ -7,6 +7,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultContainer = document.getElementById('resultContainer');
     const generatedImage = document.getElementById('generatedImage');
     const loadingContainer = document.getElementById('loadingContainer');
+    const timerDisplay = document.getElementById('timerDisplay');
+    const timerDuration = document.getElementById('timerDuration');
+
+    let countdownInterval;
 
     form.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -16,12 +20,41 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     captureButton.addEventListener('click', () => {
+        const duration = parseInt(timerDuration.value);
+        if (duration === 0) {
+            takePicture();
+        } else {
+            startCountdown(duration);
+        }
+    });
+
+    function startCountdown(duration) {
+        let timeLeft = duration;
+        captureButton.disabled = true;
+        timerDisplay.style.display = 'block';
+        
+        timerDisplay.textContent = timeLeft;
+        
+        countdownInterval = setInterval(() => {
+            timeLeft--;
+            timerDisplay.textContent = timeLeft;
+            
+            if (timeLeft === 0) {
+                clearInterval(countdownInterval);
+                timerDisplay.style.display = 'none';
+                captureButton.disabled = false;
+                takePicture();
+            }
+        }, 1000);
+    }
+
+    function takePicture() {
         captureImage();
         stopCamera();
         cameraContainer.style.display = 'none';
         loadingContainer.style.display = 'block';
         submitData();
-    });
+    }
 
     function startCamera() {
         navigator.mediaDevices.getUserMedia({ video: true })
@@ -53,11 +86,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log('Selected frame:', selectedFrame.value);
             } else {
                 console.log('No frame selected');
-            }
-
-            // Log all form data
-            for (let [key, value] of formData.entries()) {
-                console.log(key, value);
             }
 
             fetch('/submit', {

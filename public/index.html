@@ -93,6 +93,16 @@
 
         <div id="cameraContainer">
             <h2>Take a Picture</h2>
+            <div class="timer-settings">
+                <label for="timerDuration">Timer:</label>
+                <select id="timerDuration">
+                    <option value="0">No Timer</option>
+                    <option value="3">3 Seconds</option>
+                    <option value="5">5 Seconds</option>
+                    <option value="10">10 Seconds</option>
+                </select>
+            </div>
+            <div id="timerDisplay" class="timer-display"></div>
             <video id="video" width="1152" height="768" autoplay></video>
             <button id="captureButton">Capture Image</button>
             <canvas id="canvas" width="1152" height="768" style="display:none;"></canvas>
