@@ -107,36 +107,54 @@ document.addEventListener('DOMContentLoaded', () => {
                 stopCamera();
             }
 
-            const constraints = {
-                video: {
-                    deviceId: cameraSelect.value ? { exact: cameraSelect.value } : undefined,
-                    width: { ideal: 1152 },
-                    height: { ideal: 768 },
-                    facingMode: 'user'
-                }
-            };
+            // Try different constraints in order of preference
+            const constraints = [
+                // 1. Try with ideal resolution
+                {
+                    video: {
+                        deviceId: cameraSelect.value ? { exact: cameraSelect.value } : undefined,
+                        width: { ideal: 1152 },
+                        height: { ideal: 768 },
+                        facingMode: 'user'
+                    }
+                },
+                // 2. Try with minimum resolution
+                {
+                    video: {
+                        deviceId: cameraSelect.value ? { exact: cameraSelect.value } : undefined,
+                        width: { min: 640 },
+                        height: { min: 480 },
+                        facingMode: 'user'
+                    }
+                },
+                // 3. Try with just device ID
+                {
+                    video: {
+                        deviceId: cameraSelect.value ? { exact: cameraSelect.value } : undefined
+                    }
+                },
+                // 4. Try with no constraints
+                { video: true }
+            ];
 
-            // First try with ideal resolution
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                currentStream = stream;
-                video.srcObject = stream;
-            } catch (err) {
-                // If that fails, try with default resolution
-                console.warn('Failed with ideal resolution, trying default:', err);
-                delete constraints.video.width;
-                delete constraints.video.height;
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                currentStream = stream;
-                video.srcObject = stream;
+            let lastError;
+            for (const constraint of constraints) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia(constraint);
+                    currentStream = stream;
+                    video.srcObject = stream;
+                    
+                    // Successfully got stream, break the loop
+                    console.log('Camera started with constraints:', constraint);
+                    return;
+                } catch (err) {
+                    console.warn('Failed to get stream with constraints:', constraint, err);
+                    lastError = err;
+                }
             }
-            
-            // Ensure video plays when ready
-            video.onloadedmetadata = () => {
-                video.play().catch(err => {
-                    console.error('Error playing video:', err);
-                });
-            };
+
+            // If we get here, all constraints failed
+            throw lastError;
         } catch (err) {
             console.error('Error starting camera:', err);
             if (err.name === 'NotAllowedError') {
@@ -145,9 +163,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert('Selected camera not found. Please choose a different camera.');
             } else if (err.name === 'NotReadableError') {
                 alert('Selected camera is in use by another application. Please close other apps using the camera.');
+            } else if (err.name === 'OverconstrainedError') {
+                alert('Your camera does not support the required resolution. Trying with default settings...');
+                // Try one last time with no constraints
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    currentStream = stream;
+                    video.srcObject = stream;
+                } catch (finalErr) {
+                    alert('Unable to access camera with any settings. Please try a different camera.');
+                }
             } else {
                 alert('Unable to start the selected camera. Please try another camera or check permissions.');
             }
+        }
+
+        // Ensure video plays when ready
+        if (video.srcObject) {
+            video.onloadedmetadata = () => {
+                video.play().catch(err => {
+                    console.error('Error playing video:', err);
+                });
+            };
         }
     }
 
