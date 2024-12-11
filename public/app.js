@@ -241,12 +241,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function generateQRCode(imageUrl) {
         try {
-            // Extract image ID from URL if possible
-            const urlParams = new URLSearchParams(new URL(imageUrl).search);
-            const filename = urlParams.get('filename');
-            const imageId = filename ? filename.split('.')[0] : Date.now().toString(36);
+            // Generate a unique ID for this image
+            const imageId = Date.now().toString(36) + Math.random().toString(36).substr(2);
             
-            // Store the image
+            // Ensure we have a full URL for the QR code
+            const fullUrl = new URL(window.location.href);
+            fullUrl.pathname = '/share/' + imageId;
+            const shareUrl = fullUrl.toString();
+
+            // Clear previous QR code if any
+            qrCodeElement.innerHTML = '';
+            
+            // Generate QR code with the share URL
+            new QRCode(qrCodeElement, {
+                text: shareUrl,
+                width: 128,
+                height: 128,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+
+            // Store the image URL and ID mapping
             fetch('/store-image', {
                 method: 'POST',
                 headers: {
@@ -256,35 +272,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     imageId,
                     imageUrl
                 })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Create share URL
-                    const shareUrl = `${window.location.origin}/share/${imageId}`;
-                    
-                    // Clear and generate new QR code
-                    qrCodeElement.innerHTML = '';
-                    new QRCode(qrCodeElement, {
-                        text: shareUrl,
-                        width: 128,
-                        height: 128,
-                        colorDark: "#000000",
-                        colorLight: "#ffffff",
-                        correctLevel: QRCode.CorrectLevel.H
-                    });
-
-                    // Update image source only if not reused
-                    if (!data.reused) {
-                        generatedImage.src = data.localUrl;
-                    }
-                } else {
-                    throw new Error('Failed to store image');
-                }
-            })
-            .catch(error => {
-                console.error('Error storing image:', error);
-                document.getElementById('qrContainer').style.display = 'none';
+            }).catch(error => {
+                console.error('Error storing image mapping:', error);
+                // Continue showing the result even if storing fails
             });
         } catch (error) {
             console.error('Error generating QR code:', error);

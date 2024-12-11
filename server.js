@@ -110,7 +110,8 @@ app.get('/share/:imageId', (req, res) => {
     }
 
     // Get the full URL for the image
-    const fullImageUrl = `${req.protocol}://${req.get('host')}${imageUrl}`;
+    const protocol = req.secure ? 'https' : 'http';
+    const fullImageUrl = `${protocol}://${req.get('host')}${imageUrl}`;
 
     // Send a simple HTML page with the image and download button
     res.send(`
@@ -137,6 +138,7 @@ app.get('/share/:imageId', (req, res) => {
                     padding: 20px;
                     border-radius: 12px;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    text-align: center;
                 }
                 img {
                     max-width: 100%;
@@ -151,9 +153,13 @@ app.get('/share/:imageId', (req, res) => {
                     text-decoration: none;
                     border-radius: 6px;
                     font-weight: 600;
+                    margin: 10px;
                 }
                 .button:hover {
                     background-color: #2563eb;
+                }
+                .button-group {
+                    margin-top: 20px;
                 }
             </style>
         </head>
@@ -161,7 +167,10 @@ app.get('/share/:imageId', (req, res) => {
             <div class="container">
                 <h1>AI Portrait</h1>
                 <img src="${fullImageUrl}" alt="AI Portrait">
-                <a href="${fullImageUrl}" download="ai-portrait.png" class="button">Download Portrait</a>
+                <div class="button-group">
+                    <a href="${fullImageUrl}" download="ai-portrait.png" class="button">Download Portrait</a>
+                    <a href="/" class="button">Create Your Own</a>
+                </div>
             </div>
         </body>
         </html>
