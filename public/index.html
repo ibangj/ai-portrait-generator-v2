@@ -110,6 +110,12 @@
                             </button>
                         </div>
                         <div id="cameraInterface" class="hidden">
+                            <div class="camera-settings">
+                                <label for="cameraSelect">Camera:</label>
+                                <select id="cameraSelect" class="settings-select">
+                                    <option value="">Loading cameras...</option>
+                                </select>
+                            </div>
                             <div class="camera-container">
                                 <video id="video" autoplay playsinline></video>
                                 <div id="timerDisplay" class="timer-display"></div>

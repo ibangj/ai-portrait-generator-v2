@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultContainer = document.getElementById('resultContainer');
     const cameraInterface = document.getElementById('cameraInterface');
     const cameraPrompt = document.getElementById('cameraPrompt');
+    const cameraSelect = document.getElementById('cameraSelect');
     const progressBar = document.querySelector('.progress-bar');
     const progressText = document.getElementById('progressText');
     const qrCodeElement = document.getElementById('qrCode');
@@ -21,11 +22,101 @@ document.addEventListener('DOMContentLoaded', () => {
     let selectedFrame = '';
     let countdownInterval;
     let formData = new FormData();
+    let currentStream = null;
     let progressInterval;
     let currentProgress = 0;
 
     // Initialize
     showStep(1);
+
+    // Add camera selection change handler
+    cameraSelect.addEventListener('change', () => {
+        if (currentStream) {
+            stopCamera();
+        }
+        startCamera();
+    });
+
+    async function getCameraDevices() {
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = devices.filter(device => device.kind === 'videoinput');
+            
+            // Clear and update camera select options
+            cameraSelect.innerHTML = '';
+            videoDevices.forEach(device => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.text = device.label || `Camera ${cameraSelect.options.length + 1}`;
+                cameraSelect.appendChild(option);
+            });
+
+            // If no camera is selected but we have devices, select the first one
+            if (!cameraSelect.value && videoDevices.length > 0) {
+                cameraSelect.value = videoDevices[0].deviceId;
+            }
+        } catch (error) {
+            console.error('Error getting camera devices:', error);
+        }
+    }
+
+    function openCamera() {
+        cameraPrompt.classList.add('hidden');
+        cameraInterface.classList.remove('hidden');
+        
+        // Get camera permissions and list devices
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                // Stop the initial stream - we'll start the selected camera next
+                stream.getTracks().forEach(track => track.stop());
+                return getCameraDevices();
+            })
+            .then(() => startCamera())
+            .catch(err => {
+                console.error('Error accessing camera:', err);
+                alert('Unable to access camera. Please make sure you have granted camera permissions.');
+            });
+    }
+
+    async function startCamera() {
+        try {
+            if (currentStream) {
+                stopCamera();
+            }
+
+            const constraints = {
+                video: {
+                    deviceId: cameraSelect.value ? { exact: cameraSelect.value } : undefined,
+                    width: { ideal: 1152 },
+                    height: { ideal: 768 }
+                }
+            };
+
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            currentStream = stream;
+            video.srcObject = stream;
+            
+            // Ensure video plays when ready
+            video.onloadedmetadata = () => {
+                video.play().catch(err => {
+                    console.error('Error playing video:', err);
+                });
+            };
+        } catch (err) {
+            console.error('Error starting camera:', err);
+            alert('Unable to start the selected camera. Please try another camera or check permissions.');
+        }
+    }
+
+    function stopCamera() {
+        if (currentStream) {
+            currentStream.getTracks().forEach(track => track.stop());
+            currentStream = null;
+        }
+        if (video.srcObject) {
+            video.srcObject = null;
+        }
+    }
 
     function showStep(step) {
         // Hide all steps
@@ -113,52 +204,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 radio.checked = false;
             }
         });
-    }
-
-    function openCamera() {
-        cameraPrompt.classList.add('hidden');
-        cameraInterface.classList.remove('hidden');
-        // Make sure any existing stream is stopped
-        stopCamera();
-        // Clear any existing video source
-        if (video.srcObject) {
-            video.srcObject = null;
-        }
-        // Start camera with a slight delay to ensure proper initialization
-        setTimeout(() => {
-            startCamera();
-        }, 100);
-    }
-
-    function startCamera() {
-        navigator.mediaDevices.getUserMedia({ 
-            video: { 
-                width: { ideal: 1152 },
-                height: { ideal: 768 }
-            } 
-        })
-        .then(stream => {
-            video.srcObject = stream;
-            // Ensure video plays when ready
-            video.onloadedmetadata = () => {
-                video.play().catch(err => {
-                    console.error('Error playing video:', err);
-                });
-            };
-        })
-        .catch(err => {
-            console.error('Error accessing camera:', err);
-            alert('Unable to access camera. Please make sure you have granted camera permissions.');
-        });
-    }
-
-    function stopCamera() {
-        if (video.srcObject) {
-            const stream = video.srcObject;
-            const tracks = stream.getTracks();
-            tracks.forEach(track => track.stop());
-            video.srcObject = null;
-        }
     }
 
     function retakePhoto() {

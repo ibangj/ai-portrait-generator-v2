@@ -132,6 +132,7 @@ h3 {
     overflow: hidden;
     background-color: #f3f4f6;
     aspect-ratio: 4/3;
+    margin: 16px 0;
 }
 
 #video {
@@ -319,4 +320,27 @@ h3 {
     font-size: 14px;
     color: #4b5563;
     text-align: center;
+}
+
+.camera-settings {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 16px 0;
+}
+
+.settings-select {
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #e5e7eb;
+    background-color: white;
+    font-size: 14px;
+    min-width: 200px;
+}
+
+.settings-select:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
 }
