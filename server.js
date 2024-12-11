@@ -67,9 +67,16 @@ app.post('/store-image', express.json(), async (req, res) => {
             });
         }
 
+        // Ensure we have an absolute URL for ComfyUI
+        const comfyUrl = imageUrl.startsWith('http') ? 
+            imageUrl : 
+            `http://38.147.83.29:27194${imageUrl}`;
+
+        console.log('Fetching image from:', comfyUrl);
+
         // Download image from ComfyUI server
-        const response = await fetch(imageUrl);
-        if (!response.ok) throw new Error('Failed to fetch image');
+        const response = await fetch(comfyUrl);
+        if (!response.ok) throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
         
         const buffer = await response.buffer();
         const fileName = `${imageId}.png`;

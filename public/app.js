@@ -270,7 +270,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 body: JSON.stringify({
                     imageId,
-                    imageUrl
+                    imageUrl: imageUrl.startsWith('http') ? imageUrl : window.location.origin + imageUrl
                 })
             }).catch(error => {
                 console.error('Error storing image mapping:', error);
@@ -321,11 +321,8 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    // Handle potential proxied URL
-                    const imageUrl = data.imageUrl.startsWith('http') ? 
-                        `/proxy-image?url=${encodeURIComponent(data.imageUrl)}` : 
-                        data.imageUrl;
-                    
+                    // Store the image URL for sharing
+                    const imageUrl = data.imageUrl;
                     generatedImage.src = imageUrl;
                     document.getElementById('resultMessage').textContent = data.message;
                     
