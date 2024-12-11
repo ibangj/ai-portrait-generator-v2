@@ -9,15 +9,148 @@ const fetch = require('node-fetch').default;
 const FormData = require('form-data');
 
 const app = express();
-const upload = multer({ dest: 'uploads/' });
+
+// Create storage directories if they don't exist
+const storagePath = path.join(__dirname, 'storage');
+const imagesPath = path.join(storagePath, 'images');
+
+if (!fs.existsSync(storagePath)) {
+    fs.mkdirSync(storagePath);
+}
+if (!fs.existsSync(imagesPath)) {
+    fs.mkdirSync(imagesPath);
+}
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, 'uploads/');
+    },
+    filename: function (req, file, cb) {
+        cb(null, Date.now() + '-' + file.originalname);
+    }
+});
+const upload = multer({ storage: storage });
+
+// In-memory store for image mappings (in production, use a database)
+const imageStore = new Map();
 
 app.use(express.json());
 app.use(express.static('public'));
+// Serve stored images
+app.use('/storage/images', express.static(imagesPath));
 
 // Define a route for serving images
 app.get('/images/:imageName', (req, res) => {
     const imageName = req.params.imageName;
     res.sendFile(path.join(__dirname, 'public/images', imageName));
+});
+
+// Store image mapping and save image
+app.post('/store-image', express.json(), async (req, res) => {
+    try {
+        const { imageId, imageUrl } = req.body;
+        
+        if (!imageId || !imageUrl) {
+            return res.status(400).json({ success: false, message: 'Missing required fields' });
+        }
+
+        // Download image from ComfyUI server
+        const response = await fetch(imageUrl);
+        if (!response.ok) throw new Error('Failed to fetch image');
+        
+        const buffer = await response.buffer();
+        const fileName = `${imageId}.png`;
+        const filePath = path.join(imagesPath, fileName);
+        
+        // Save image to storage
+        fs.writeFileSync(filePath, buffer);
+        
+        // Store mapping with local URL
+        const localUrl = `/storage/images/${fileName}`;
+        imageStore.set(imageId, localUrl);
+        
+        console.log(`Stored image mapping: ${imageId} -> ${localUrl}`);
+        
+        res.json({ 
+            success: true,
+            localUrl: localUrl
+        });
+    } catch (error) {
+        console.error('Error storing image:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Failed to store image'
+        });
+    }
+});
+
+// Share endpoint
+app.get('/share/:imageId', (req, res) => {
+    const { imageId } = req.params;
+    const imageUrl = imageStore.get(imageId);
+    
+    if (!imageUrl) {
+        return res.status(404).send('Image not found');
+    }
+
+    // Get the full URL for the image
+    const fullImageUrl = `${req.protocol}://${req.get('host')}${imageUrl}`;
+
+    // Send a simple HTML page with the image and download button
+    res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>AI Portrait</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    margin: 0;
+                    padding: 20px;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    background-color: #f0f2f5;
+                }
+                .container {
+                    max-width: 500px;
+                    width: 100%;
+                    background: white;
+                    padding: 20px;
+                    border-radius: 12px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                }
+                img {
+                    max-width: 100%;
+                    border-radius: 8px;
+                    margin: 20px 0;
+                }
+                .button {
+                    display: inline-block;
+                    padding: 12px 24px;
+                    background-color: #3b82f6;
+                    color: white;
+                    text-decoration: none;
+                    border-radius: 6px;
+                    font-weight: 600;
+                }
+                .button:hover {
+                    background-color: #2563eb;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>AI Portrait</h1>
+                <img src="${fullImageUrl}" alt="AI Portrait">
+                <a href="${fullImageUrl}" download="ai-portrait.png" class="button">Download Portrait</a>
+            </div>
+        </body>
+        </html>
+    `);
 });
 
 // ComfyUI WebSocket setup
