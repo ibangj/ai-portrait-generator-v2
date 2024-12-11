@@ -73,19 +73,19 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         })
             .then(stream => {
-                // Keep this initial stream if no specific camera is selected
-                if (!cameraSelect.value) {
-                    currentStream = stream;
-                    video.srcObject = stream;
-                    return video.play();
-                }
-                // Otherwise stop it and start the selected camera
-                stream.getTracks().forEach(track => track.stop());
-                return getCameraDevices();
-            })
-            .then(() => {
-                if (!cameraSelect.value) return; // Skip if we're using the initial stream
-                return startCamera();
+                // Keep this initial stream
+                currentStream = stream;
+                video.srcObject = stream;
+                return video.play()
+                    .then(() => getCameraDevices())
+                    .then(() => {
+                        // If a specific camera was selected and it's different from current one
+                        const currentTrack = stream.getVideoTracks()[0];
+                        const currentDeviceId = currentTrack.getSettings().deviceId;
+                        if (cameraSelect.value && cameraSelect.value !== currentDeviceId) {
+                            return startCamera();
+                        }
+                    });
             })
             .catch(err => {
                 console.error('Error accessing camera:', err);
