@@ -369,7 +369,7 @@ app.post('/submit', upload.single('image'), async (req, res) => {
 
 // Initialize cleanup service
 const cleanupService = new StorageCleanup({
-    storageDir: path.join(__dirname, 'storage', 'images'),  // Use absolute path
+    storageDir: imagesPath,
     maxAgeInDays: 7,
     maxSizeInGB: 5
 });
@@ -379,8 +379,9 @@ cleanupService.startCleanupJob(60);
 
 // Handle graceful shutdown
 process.on('SIGTERM', () => {
+    console.log('Received SIGTERM. Cleaning up...');
     cleanupService.stopCleanupJob();
-    // ... other cleanup code
+    process.exit(0);
 });
 
 const PORT = process.env.PORT || 3000;

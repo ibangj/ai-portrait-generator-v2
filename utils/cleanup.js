@@ -1,96 +1,94 @@
-const fs = require('fs').promises;
+const fs = require('fs');
 const path = require('path');
-const logger = require('./logger'); // Assuming you have a logger
 
 class StorageCleanup {
-    constructor(options = {}) {
-        this.storageDir = options.storageDir || '/storage/images/';
+    constructor(options) {
+        this.storageDir = options.storageDir;
         this.maxAgeInDays = options.maxAgeInDays || 7;
         this.maxSizeInGB = options.maxSizeInGB || 5;
-        this.isRunning = false;
+        this.interval = null;
     }
 
-    async cleanupByAge() {
-        try {
-            const files = await fs.readdir(this.storageDir);
-            const now = Date.now();
-            const maxAgeMs = this.maxAgeInDays * 24 * 60 * 60 * 1000;
+    startCleanupJob(intervalMinutes = 60) {
+        // Convert minutes to milliseconds
+        const interval = intervalMinutes * 60 * 1000;
+        
+        this.interval = setInterval(() => {
+            this.cleanup();
+        }, interval);
 
-            for (const file of files) {
-                const filePath = path.join(this.storageDir, file);
-                const stats = await fs.stat(filePath);
-                const ageMs = now - stats.mtime.getTime();
-
-                if (ageMs > maxAgeMs) {
-                    await fs.unlink(filePath);
-                    logger.info(`Deleted old file: ${file}`);
-                }
-            }
-        } catch (error) {
-            logger.error('Error in cleanupByAge:', error);
-        }
-    }
-
-    async cleanupBySize() {
-        try {
-            const maxSizeBytes = this.maxSizeInGB * 1024 * 1024 * 1024; // Convert GB to bytes
-            const files = await fs.readdir(this.storageDir);
-            
-            // Get file stats and sort by date (oldest first)
-            const fileStats = await Promise.all(
-                files.map(async (file) => {
-                    const filePath = path.join(this.storageDir, file);
-                    const stats = await fs.stat(filePath);
-                    return {
-                        name: file,
-                        path: filePath,
-                        size: stats.size,
-                        mtime: stats.mtime
-                    };
-                })
-            );
-
-            fileStats.sort((a, b) => a.mtime - b.mtime);
-
-            // Calculate total size
-            let totalSize = fileStats.reduce((sum, file) => sum + file.size, 0);
-
-            // Remove oldest files if total size exceeds limit
-            for (const file of fileStats) {
-                if (totalSize <= maxSizeBytes) break;
-
-                await fs.unlink(file.path);
-                totalSize -= file.size;
-                logger.info(`Deleted file due to size limit: ${file.name}`);
-            }
-        } catch (error) {
-            logger.error('Error in cleanupBySize:', error);
-        }
-    }
-
-    async startCleanupJob(intervalMinutes = 60) {
-        if (this.isRunning) return;
-        this.isRunning = true;
-
-        const cleanup = async () => {
-            logger.info('Starting storage cleanup job');
-            await this.cleanupByAge();
-            await this.cleanupBySize();
-            logger.info('Completed storage cleanup job');
-        };
-
-        // Run immediately on start
-        await cleanup();
-
-        // Schedule periodic cleanup
-        this.intervalId = setInterval(cleanup, intervalMinutes * 60 * 1000);
+        // Run initial cleanup
+        this.cleanup();
     }
 
     stopCleanupJob() {
-        if (this.intervalId) {
-            clearInterval(this.intervalId);
-            this.isRunning = false;
-            logger.info('Stopped storage cleanup job');
+        if (this.interval) {
+            clearInterval(this.interval);
+            this.interval = null;
         }
     }
-} 
+
+    cleanup() {
+        try {
+            console.log('Starting storage cleanup...');
+            
+            // Check if directory exists
+            if (!fs.existsSync(this.storageDir)) {
+                console.log('Storage directory does not exist:', this.storageDir);
+                return;
+            }
+
+            const files = fs.readdirSync(this.storageDir);
+            const now = new Date();
+            let totalSize = 0;
+
+            // Get file stats and calculate total size
+            const fileStats = files.map(file => {
+                const filePath = path.join(this.storageDir, file);
+                const stats = fs.statSync(filePath);
+                return {
+                    path: filePath,
+                    name: file,
+                    size: stats.size,
+                    created: stats.birthtime
+                };
+            });
+
+            // Sort files by creation date (oldest first)
+            fileStats.sort((a, b) => a.created - b.created);
+
+            for (const file of fileStats) {
+                const ageInDays = (now - file.created) / (1000 * 60 * 60 * 24);
+                totalSize += file.size;
+
+                // Delete if file is too old
+                if (ageInDays > this.maxAgeInDays) {
+                    this.deleteFile(file.path);
+                    console.log(`Deleted old file: ${file.name} (${ageInDays.toFixed(1)} days old)`);
+                    continue;
+                }
+
+                // If total size exceeds limit, start deleting oldest files
+                if (totalSize > this.maxSizeInGB * 1024 * 1024 * 1024) {
+                    this.deleteFile(file.path);
+                    console.log(`Deleted file due to space limit: ${file.name}`);
+                    totalSize -= file.size;
+                }
+            }
+
+            console.log('Storage cleanup completed');
+        } catch (error) {
+            console.error('Error during storage cleanup:', error);
+        }
+    }
+
+    deleteFile(filePath) {
+        try {
+            fs.unlinkSync(filePath);
+        } catch (error) {
+            console.error(`Error deleting file ${filePath}:`, error);
+        }
+    }
+}
+
+module.exports = StorageCleanup; 
