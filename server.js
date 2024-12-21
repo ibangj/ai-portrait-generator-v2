@@ -12,6 +12,12 @@ const http = require('http');
 
 const app = express();
 
+// Add near the top of the file where other constants are defined
+const COMFYUI_HOST = process.env.COMFYUI_HOST || 'localhost';
+const COMFYUI_PORT = process.env.COMFYUI_PORT || '8188';
+const COMFYUI_BASE_URL = `http://${COMFYUI_HOST}:${COMFYUI_PORT}`;
+const COMFYUI_WS_URL = `ws://${COMFYUI_HOST}:${COMFYUI_PORT}/ws`;
+
 // Create storage directories if they don't exist
 const storagePath = path.join(__dirname, 'storage');
 const imagesPath = path.join(storagePath, 'images');
@@ -70,7 +76,7 @@ app.post('/store-image', express.json(), async (req, res) => {
         // Ensure we have an absolute URL for ComfyUI
         const comfyUrl = imageUrl.startsWith('http') ? 
             imageUrl : 
-            `http://38.147.83.29:27194${imageUrl}`;
+            `${COMFYUI_BASE_URL}${imageUrl}`;
 
         console.log('Fetching image from:', comfyUrl);
 
@@ -185,7 +191,7 @@ app.get('/share/:imageId', (req, res) => {
 });
 
 // ComfyUI WebSocket setup
-const ws = new WebSocket('ws://38.147.83.29:27194/ws');
+const ws = new WebSocket(COMFYUI_WS_URL);
 
 ws.on('open', function open() {
     console.log('Connected to ComfyUI WebSocket');
@@ -214,7 +220,7 @@ async function uploadImageToComfyUI(imagePath, maxRetries = 3, delay = 2000) {
             });
 
             console.log(`[${attempt}] Sending POST request to ComfyUI upload endpoint`);
-            const uploadResponse = await fetch('http://38.147.83.29:27194/upload/image', {
+            const uploadResponse = await fetch(`${COMFYUI_BASE_URL}/upload/image`, {
                 method: 'POST',
                 body: form,
                 timeout: 60000 // 60 seconds timeout
@@ -291,7 +297,7 @@ async function processWithComfyUI(imagePath, fullName, gender, position, setPang
         };
 
         console.log(`[6] Sending workflow to ComfyUI`);
-        const response = await fetch('http://38.147.83.29:27194/prompt', {
+        const response = await fetch(`${COMFYUI_BASE_URL}/prompt`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody)
@@ -324,12 +330,12 @@ async function waitForImageGeneration(promptId) {
     return new Promise((resolve, reject) => {
         const checkStatus = async () => {
             try {
-                const historyResponse = await fetch(`http://38.147.83.29:27194/history/${promptId}`);
+                const historyResponse = await fetch(`${COMFYUI_BASE_URL}/history/${promptId}`);
                 const historyData = await historyResponse.json();
 
                 if (historyData[promptId] && historyData[promptId].outputs && historyData[promptId].outputs["20"]) {
                     const outputImage = historyData[promptId].outputs["20"].images[0];
-                    const originalUrl = `http://38.147.83.29:27194/view?filename=${outputImage.filename}&subfolder=${outputImage.subfolder}&type=${outputImage.type}`;
+                    const originalUrl = `${COMFYUI_BASE_URL}/view?filename=${outputImage.filename}&subfolder=${outputImage.subfolder}&type=${outputImage.type}`;
                     // Return proxied URL instead
                     resolve(`/proxy-image?url=${encodeURIComponent(originalUrl)}`);
                 } else {
