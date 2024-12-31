@@ -1,5 +1,7 @@
 # AI Portrait Generator 🎨
 
+[![AI Portrait Generator Demo](https://img.youtube.com/vi/YcAJ8-b8KHI/0.jpg)](https://www.youtube.com/watch?v=YcAJ8-b8KHI)
+
 An interactive web application that generates AI-enhanced portraits using ComfyUI backend processing.
 
 ## 🌟 Features
