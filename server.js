@@ -7,12 +7,46 @@ const fs = require('fs');
 const path = require('path');
 const fetch = require('node-fetch').default;
 const FormData = require('form-data');
+const StorageCleanup = require('./utils/cleanup');
+const http = require('http');
 
 const app = express();
-const upload = multer({ dest: 'uploads/' });
+
+// Add near the top of the file where other constants are defined
+const COMFYUI_HOST = process.env.COMFYUI_HOST || 'localhost';
+const COMFYUI_PORT = process.env.COMFYUI_PORT || '8188';
+const COMFYUI_BASE_URL = `http://${COMFYUI_HOST}:${COMFYUI_PORT}`;
+const COMFYUI_WS_URL = `ws://${COMFYUI_HOST}:${COMFYUI_PORT}/ws`;
+
+// Create storage directories if they don't exist
+const storagePath = path.join(__dirname, 'storage');
+const imagesPath = path.join(storagePath, 'images');
+
+if (!fs.existsSync(storagePath)) {
+    fs.mkdirSync(storagePath);
+}
+if (!fs.existsSync(imagesPath)) {
+    fs.mkdirSync(imagesPath);
+}
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, 'uploads/');
+    },
+    filename: function (req, file, cb) {
+        cb(null, Date.now() + '-' + file.originalname);
+    }
+});
+const upload = multer({ storage: storage });
+
+// In-memory store for image mappings (in production, use a database)
+const imageStore = new Map();
 
 app.use(express.json());
 app.use(express.static('public'));
+// Serve stored images
+app.use('/storage/images', express.static(imagesPath));
 
 // Define a route for serving images
 app.get('/images/:imageName', (req, res) => {
@@ -20,8 +54,144 @@ app.get('/images/:imageName', (req, res) => {
     res.sendFile(path.join(__dirname, 'public/images', imageName));
 });
 
+// Store image mapping and save image
+app.post('/store-image', express.json(), async (req, res) => {
+    try {
+        const { imageId, imageUrl } = req.body;
+        
+        if (!imageId || !imageUrl) {
+            return res.status(400).json({ success: false, message: 'Missing required fields' });
+        }
+
+        // Check if image already exists in store
+        const existingUrl = imageStore.get(imageId);
+        if (existingUrl) {
+            console.log(`Image already exists: ${imageId} -> ${existingUrl}`);
+            return res.json({ 
+                success: true,
+                localUrl: existingUrl
+            });
+        }
+
+        // Ensure we have an absolute URL for ComfyUI
+        const comfyUrl = imageUrl.startsWith('http') ? 
+            imageUrl : 
+            `${COMFYUI_BASE_URL}${imageUrl}`;
+
+        console.log('Fetching image from:', comfyUrl);
+
+        // Download image from ComfyUI server
+        const response = await fetch(comfyUrl);
+        if (!response.ok) throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+        
+        const buffer = await response.buffer();
+        const fileName = `${imageId}.png`;
+        const filePath = path.join(imagesPath, fileName);
+        
+        // Check if file already exists on disk
+        if (!fs.existsSync(filePath)) {
+            // Save image to storage only if it doesn't exist
+            fs.writeFileSync(filePath, buffer);
+            
+            // Store mapping with local URL
+            const localUrl = `/storage/images/${fileName}`;
+            imageStore.set(imageId, localUrl);
+            
+            console.log(`Stored new image mapping: ${imageId} -> ${localUrl}`);
+        }
+        
+        res.json({ 
+            success: true,
+            localUrl: `/storage/images/${fileName}`
+        });
+    } catch (error) {
+        console.error('Error storing image:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Failed to store image'
+        });
+    }
+});
+
+// Share endpoint
+app.get('/share/:imageId', (req, res) => {
+    const { imageId } = req.params;
+    const imageUrl = imageStore.get(imageId);
+    
+    if (!imageUrl) {
+        return res.status(404).send('Image not found');
+    }
+
+    // Get the full URL for the image
+    const protocol = req.secure ? 'https' : 'http';
+    const fullImageUrl = `${protocol}://${req.get('host')}${imageUrl}`;
+
+    // Send a simple HTML page with the image and download button
+    res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>AI Portrait</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    margin: 0;
+                    padding: 20px;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    background-color: #f0f2f5;
+                }
+                .container {
+                    max-width: 500px;
+                    width: 100%;
+                    background: white;
+                    padding: 20px;
+                    border-radius: 12px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    text-align: center;
+                }
+                img {
+                    max-width: 100%;
+                    border-radius: 8px;
+                    margin: 20px 0;
+                }
+                .button {
+                    display: inline-block;
+                    padding: 12px 24px;
+                    background-color: #3b82f6;
+                    color: white;
+                    text-decoration: none;
+                    border-radius: 6px;
+                    font-weight: 600;
+                    margin: 10px;
+                }
+                .button:hover {
+                    background-color: #2563eb;
+                }
+                .button-group {
+                    margin-top: 20px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>AI Portrait</h1>
+                <img src="${fullImageUrl}" alt="AI Portrait">
+                <div class="button-group">
+                    <a href="${fullImageUrl}" download="ai-portrait.png" class="button">Download Portrait</a>
+                    <a href="/" class="button">Create Your Own</a>
+                </div>
+            </div>
+        </body>
+        </html>
+    `);
+});
+
 // ComfyUI WebSocket setup
-const ws = new WebSocket('ws://38.147.83.29:27194/ws');
+const ws = new WebSocket(COMFYUI_WS_URL);
 
 ws.on('open', function open() {
     console.log('Connected to ComfyUI WebSocket');
@@ -50,7 +220,7 @@ async function uploadImageToComfyUI(imagePath, maxRetries = 3, delay = 2000) {
             });
 
             console.log(`[${attempt}] Sending POST request to ComfyUI upload endpoint`);
-            const uploadResponse = await fetch('http://38.147.83.29:27194/upload/image', {
+            const uploadResponse = await fetch(`${COMFYUI_BASE_URL}/upload/image`, {
                 method: 'POST',
                 body: form,
                 timeout: 60000 // 60 seconds timeout
@@ -88,14 +258,25 @@ async function processWithComfyUI(imagePath, fullName, gender, position, setPang
         if (selectedFrame) {
             const framePath = path.join(__dirname, 'public', 'images', `${selectedFrame}.png`);
             try {
-                uploadedFrame = await uploadImageToComfyUI(framePath);
-                console.log(`[3] Frame uploaded successfully. Uploaded name: ${uploadedFrame}`);
+                if (fs.existsSync(framePath)) {
+                    uploadedFrame = await uploadImageToComfyUI(framePath);
+                    console.log(`[3] Frame uploaded successfully. Uploaded name: ${uploadedFrame}`);
+                } else {
+                    console.warn(`[WARNING] Frame file not found: ${framePath}`);
+                    uploadedFrame = "sample_frame.png"; // Default frame if file not found
+                }
             } catch (frameUploadError) {
                 console.error(`[ERROR] Failed to upload frame. Using default frame.`, frameUploadError);
                 uploadedFrame = "sample_frame.png"; // Default frame if upload fails
             }
         } else {
-            uploadedFrame = "sample_frame.png"; // Default frame if none selected
+            console.log(`[3] No frame selected, using default frame`);
+            const defaultFramePath = path.join(__dirname, 'public', 'images', 'sample_frame.png');
+            if (fs.existsSync(defaultFramePath)) {
+                uploadedFrame = await uploadImageToComfyUI(defaultFramePath);
+            } else {
+                uploadedFrame = "sample_frame.png";
+            }
         }
 
         console.log(`[4] Reading workflow file`);
@@ -116,7 +297,7 @@ async function processWithComfyUI(imagePath, fullName, gender, position, setPang
         };
 
         console.log(`[6] Sending workflow to ComfyUI`);
-        const response = await fetch('http://38.147.83.29:27194/prompt', {
+        const response = await fetch(`${COMFYUI_BASE_URL}/prompt`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody)
@@ -149,14 +330,16 @@ async function waitForImageGeneration(promptId) {
     return new Promise((resolve, reject) => {
         const checkStatus = async () => {
             try {
-                const historyResponse = await fetch(`http://38.147.83.29:27194/history/${promptId}`);
+                const historyResponse = await fetch(`${COMFYUI_BASE_URL}/history/${promptId}`);
                 const historyData = await historyResponse.json();
 
                 if (historyData[promptId] && historyData[promptId].outputs && historyData[promptId].outputs["20"]) {
                     const outputImage = historyData[promptId].outputs["20"].images[0];
-                    resolve(`http://38.147.83.29:27194/view?filename=${outputImage.filename}&subfolder=${outputImage.subfolder}&type=${outputImage.type}`);
+                    const originalUrl = `${COMFYUI_BASE_URL}/view?filename=${outputImage.filename}&subfolder=${outputImage.subfolder}&type=${outputImage.type}`;
+                    // Return proxied URL instead
+                    resolve(`/proxy-image?url=${encodeURIComponent(originalUrl)}`);
                 } else {
-                    setTimeout(checkStatus, 1000); // Check again after 1 second
+                    setTimeout(checkStatus, 1000);
                 }
             } catch (error) {
                 reject(error);
@@ -206,5 +389,44 @@ app.post('/submit', upload.single('image'), async (req, res) => {
     }
 });
 
+// Initialize cleanup service
+const cleanupService = new StorageCleanup({
+    storageDir: imagesPath,
+    maxAgeInDays: 7,
+    maxSizeInGB: 5
+});
+
+// Start the cleanup job to run every hour
+cleanupService.startCleanupJob(60);
+
+// Handle graceful shutdown
+process.on('SIGTERM', () => {
+    console.log('Received SIGTERM. Cleaning up...');
+    cleanupService.stopCleanupJob();
+    process.exit(0);
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+// Add these new endpoints before your existing routes
+app.get('/proxy-image', async (req, res) => {
+    const imageUrl = req.query.url;
+    if (!imageUrl) {
+        return res.status(400).send('No image URL provided');
+    }
+
+    try {
+        const response = await fetch(imageUrl);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        
+        // Forward the content type
+        res.set('Content-Type', response.headers.get('content-type'));
+        
+        // Pipe the image data to response
+        response.body.pipe(res);
+    } catch (error) {
+        console.error('Error proxying image:', error);
+        res.status(500).send('Error fetching image');
+    }
+});
