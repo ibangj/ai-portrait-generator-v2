@@ -131,8 +131,11 @@ h3 {
     border-radius: 12px;
     overflow: hidden;
     background-color: #f3f4f6;
-    aspect-ratio: 4/3;
+    aspect-ratio: 2/3;
     margin: 16px 0;
+    max-width: 80vh;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 #video {
@@ -147,12 +150,15 @@ h3 {
     justify-content: center;
     margin-bottom: 20px;
     flex-wrap: wrap;
+    padding: 0 16px;
 }
 
 .frame-option {
     text-align: center;
     cursor: pointer;
     transition: transform 0.2s;
+    width: 100%;
+    max-width: 200px;
 }
 
 .frame-option:hover {
@@ -164,9 +170,10 @@ h3 {
 }
 
 .frame-option img {
-    width: 120px;
-    height: 120px;
-    object-fit: cover;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 3/2;
+    object-fit: contain;
     border-radius: 8px;
     border: 2px solid transparent;
     transition: border-color 0.2s;

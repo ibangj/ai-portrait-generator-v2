@@ -67,8 +67,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Get camera permissions and list devices
         navigator.mediaDevices.getUserMedia({ 
             video: {
-                width: { ideal: 1152 },
-                height: { ideal: 768 },
+                width: { ideal: 1728 },
+                height: { ideal: 1152 },
                 facingMode: 'user'
             }
         })
@@ -109,21 +109,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Try different constraints in order of preference
             const constraints = [
-                // 1. Try with ideal resolution
+                // 1. Try with ideal portrait resolution
                 {
                     video: {
                         deviceId: cameraSelect.value ? { exact: cameraSelect.value } : undefined,
                         width: { ideal: 1152 },
-                        height: { ideal: 768 },
+                        height: { ideal: 1728 },
                         facingMode: 'user'
                     }
                 },
-                // 2. Try with minimum resolution
+                // 2. Try with minimum portrait resolution
                 {
                     video: {
                         deviceId: cameraSelect.value ? { exact: cameraSelect.value } : undefined,
-                        width: { min: 640 },
-                        height: { min: 480 },
+                        width: { min: 720 },
+                        height: { min: 1280 },
                         facingMode: 'user'
                     }
                 },
